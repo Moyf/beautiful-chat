@@ -313,6 +313,20 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
           tokens={tokens}
         />
 
+        <ChoiceRow
+          title="Text size"
+          description="Scales the text this plugin draws, from replies and code blocks to callouts and badges."
+          value={String(preferences.textScale)}
+          options={[
+            { value: "0.9", label: "Small" },
+            { value: "1", label: "Default" },
+            { value: "1.15", label: "Large" },
+            { value: "1.3", label: "XL" },
+          ]}
+          onChange={(textScale) => updateEnhancerPreferences({ textScale: Number(textScale) })}
+          tokens={tokens}
+        />
+
         <ToggleRow
           title="Frosted glass"
           description="Blur surfaces where the host supports it, or use solid surfaces instead."

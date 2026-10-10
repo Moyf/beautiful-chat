@@ -13,10 +13,16 @@ export type UiFontPreference = "inter" | "system";
 export type CodeFontPreference = "code" | "plain";
 export type MarkdownVariantPreference = "document" | "compact" | "terminal";
 
+/** Multiplier applied to every font size the plugin draws. */
+export const TEXT_SCALE_MIN = 0.85;
+export const TEXT_SCALE_MAX = 1.35;
+
 export interface EnhancerPreferences {
   accent: AccentPreset;
   uiFont: UiFontPreference;
   codeFont: CodeFontPreference;
+  /** Scales every text style the plugin renders; 1 is the authored size. */
+  textScale: number;
   frostedGlass: boolean;
   /**
    * A light that follows the pointer across a card. Web and desktop only:
@@ -53,6 +59,7 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   accent: "host",
   uiFont: "inter",
   codeFont: "code",
+  textScale: 1,
   frostedGlass: true,
   pointerGlow: true,
   enhancedUserBubble: true,
@@ -81,6 +88,10 @@ function loadPreferences(): EnhancerPreferences {
       accent: isAccentPreset(candidate.accent) ? candidate.accent : DEFAULT_PREFERENCES.accent,
       uiFont: candidate.uiFont === "system" ? "system" : DEFAULT_PREFERENCES.uiFont,
       codeFont: candidate.codeFont === "plain" ? "plain" : DEFAULT_PREFERENCES.codeFont,
+      textScale:
+        typeof candidate.textScale === "number" && Number.isFinite(candidate.textScale)
+          ? Math.min(TEXT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, candidate.textScale))
+          : DEFAULT_PREFERENCES.textScale,
       frostedGlass:
         typeof candidate.frostedGlass === "boolean"
           ? candidate.frostedGlass
