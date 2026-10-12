@@ -520,18 +520,20 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
           tokens={tokens}
         />
 
-        <SwatchRow<MarkColorPreset>
-          title="Mark colour"
-          description="The wash behind highlighted text."
-          value={preferences.markColor}
-          options={MARK_COLOUR_OPTIONS}
-          customColor={{
-            hex: preferences.markCustomColor,
-            onChange: (markCustomColor) => updateEnhancerPreferences({ markCustomColor }),
-          }}
-          onChange={(markColor) => updateEnhancerPreferences({ markColor })}
-          tokens={tokens}
-        />
+        {preferences.markSyntax ? (
+          <SwatchRow<MarkColorPreset>
+            title="Mark colour"
+            description="The wash behind highlighted text."
+            value={preferences.markColor}
+            options={MARK_COLOUR_OPTIONS}
+            customColor={{
+              hex: preferences.markCustomColor,
+              onChange: (markCustomColor) => updateEnhancerPreferences({ markCustomColor }),
+            }}
+            onChange={(markColor) => updateEnhancerPreferences({ markColor })}
+            tokens={tokens}
+          />
+        ) : null}
 
         <SwatchRow<BoldColorPreset>
           title="Bold colour"
