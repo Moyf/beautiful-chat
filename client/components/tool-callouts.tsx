@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import type { TextStyle, ViewStyle } from "react-native";
 import { Glyph } from "./glyph";
@@ -42,6 +42,11 @@ interface ToolCalloutProps {
   data: ToolCalloutData;
   tokens: ExtendedThemeTokens;
   defaultExpanded?: boolean;
+  /**
+   * Folds a card back up as soon as it finishes. A card the user has opened
+   * or closed themselves keeps its state, and a failed call always stays open.
+   */
+  autoCollapse?: boolean;
   /** Shows a path in the machine's own file manager. */
   onRevealPath?: (path: string) => void;
   /**
@@ -56,10 +61,12 @@ export function ToolCallout({
   data,
   tokens,
   defaultExpanded = true,
+  autoCollapse = true,
   onRevealPath,
   imageFile,
 }: ToolCalloutProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [touched, setTouched] = useState(false);
 
   // Every branch below needs a payload. A tool that carries none — a hub op
   // with no parsed record, an unmapped kind — would otherwise draw an empty
@@ -91,6 +98,22 @@ export function ToolCallout({
   const isSuccess = data.status === "completed";
   const isRunning = data.status === "running";
   const isFailed = data.status === "failed";
+
+  // A user who pressed the card owns its state from then on; auto-collapse
+  // only ever folds a card nobody has touched. An ask card carries the
+  // agent's question and its options, so it never folds on its own.
+  const toggleExpanded = useCallback(() => {
+    setTouched(true);
+    setExpanded((previous) => !previous);
+  }, []);
+
+  const previousStatus = useRef(data.status);
+  useEffect(() => {
+    const wasRunning = previousStatus.current === "running";
+    previousStatus.current = data.status;
+    if (!autoCollapse || touched || data.tool === "ask") return;
+    if (wasRunning && data.status === "completed") setExpanded(false);
+  }, [autoCollapse, touched, data.status, data.tool]);
 
   // Only a real shell call can "complete without output". A git op or an
   // unmapped tool that prints nothing is not a silent command, so neither
@@ -186,6 +209,25 @@ export function ToolCallout({
           fontSize: tokens.fs(11),
           color: tokens.foregroundMuted,
           marginLeft: 2,
+        },
+        collapseBar: {
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          gap: 4,
+          paddingHorizontal: 10,
+          paddingVertical: 5,
+          borderTopWidth: 1,
+          borderTopColor: tokens.borderSubtle,
+          backgroundColor: tokens.surface1,
+        },
+        collapseBarText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(10),
+          fontWeight: "600",
+          textTransform: "uppercase",
+          letterSpacing: 0.4,
+          color: tokens.foregroundSubtle,
         },
         body: {
           padding: 12,
@@ -448,7 +490,7 @@ export function ToolCallout({
       {...surfaceProps(frosted, glowing(tokens.isDark), selectionSurface)}
       style={styles.container}
     >
-      <Pressable onPress={() => setExpanded((p) => !p)} style={styles.header}>
+      <Pressable onPress={toggleExpanded} style={styles.header}>
         <View style={styles.headerLeft}>
           <Breathe depth={1.08} durationMs={1800}>
             <Glyph name={getToolIconName(data.tool)} size={13} color={iconColor} />
@@ -521,7 +563,8 @@ export function ToolCallout({
       </Pressable>
 
       {expanded && (
-        <View style={styles.body}>
+        <>
+          <View style={styles.body}>
           {(data.tool === "bash" || data.tool === "shell" || data.tool === "git") && (
             <View style={styles.terminalWindow}>
               {(data.shell?.command || data.command) && (
@@ -846,7 +889,23 @@ export function ToolCallout({
               )}
             </View>
           )}
-        </View>
+          </View>
+
+          {/* The fold control also lives at the bottom edge: a long output
+              pushes the header a screen away, so the reader who reached the
+              end can close the card without scrolling back up. */}
+          <Pressable
+            onPress={toggleExpanded}
+            style={styles.collapseBar}
+            accessibilityRole="button"
+            accessibilityLabel="Collapse"
+          >
+            <Text selectable={false} style={styles.collapseBarText}>
+              Collapse
+            </Text>
+            <Glyph name="ChevronUp" size={14} color={tokens.foregroundSubtle} />
+          </Pressable>
+        </>
       )}
     </View>
   );

@@ -328,6 +328,22 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
         />
 
         <ToggleRow
+          title="Auto-collapse tools"
+          description="Folds a tool card back up once it finishes. A failed call stays open, and a card you opened or closed yourself keeps its state."
+          value={preferences.autoCollapseTools}
+          onChange={(autoCollapseTools) => updateEnhancerPreferences({ autoCollapseTools })}
+          tokens={tokens}
+        />
+
+        <ToggleRow
+          title="Collapse thinking"
+          description="Starts a thinking stream folded; open one to read the reasoning while it streams."
+          value={preferences.collapseThinking}
+          onChange={(collapseThinking) => updateEnhancerPreferences({ collapseThinking })}
+          tokens={tokens}
+        />
+
+        <ToggleRow
           title="Frosted glass"
           description="Blur surfaces where the host supports it, or use solid surfaces instead."
           value={preferences.frostedGlass}
