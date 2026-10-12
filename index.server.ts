@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { open, stat, type FileHandle } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import { revealPathRpc } from "./shared/file-rpc";
+import { openPathRpc, revealPathRpc } from "./shared/file-rpc";
 import { type HighlightLine, type HighlightToken, highlightRpc } from "./shared/highlight-rpc";
 import { imageRpc } from "./shared/image-rpc";
 
@@ -117,6 +117,25 @@ function revealWithShell(target: string, isDirectory: boolean): void {
             stdio: "ignore",
           });
   // Explorer reports a non-zero exit even when it opened the window, so the
+  // result is never read. Detaching keeps the daemon free of a zombie child.
+  child.on("error", () => {});
+  child.unref();
+}
+
+/**
+ * Opens a path with the platform's default handler, the way a double-click in
+ * the machine's own file manager would: an `.html` artifact lands in the
+ * browser, a `.md` file in its editor. Windows delegates to Explorer, which
+ * resolves the association itself.
+ */
+function openWithShell(target: string): void {
+  const child =
+    process.platform === "win32"
+      ? spawn("explorer.exe", [target], { detached: true, stdio: "ignore" })
+      : process.platform === "darwin"
+        ? spawn("open", [target], { detached: true, stdio: "ignore" })
+        : spawn("xdg-open", [target], { detached: true, stdio: "ignore" });
+  // Explorer reports a non-zero exit even when it opened the file, so the
   // result is never read. Detaching keeps the daemon free of a zombie child.
   child.on("error", () => {});
   child.unref();
@@ -459,6 +478,23 @@ export default function contribute(server: PluginServerContext) {
     } catch (error) {
       return {
         revealed: null,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  server.handle(openPathRpc, async (input) => {
+    const requested = stripSelector(input.path);
+    if (!requested) return { opened: null, error: "No path" };
+
+    const target = isAbsolute(requested) ? requested : resolve(input.cwd, requested);
+    try {
+      await stat(target);
+      openWithShell(target);
+      return { opened: target, error: null };
+    } catch (error) {
+      return {
+        opened: null,
         error: error instanceof Error ? error.message : String(error),
       };
     }

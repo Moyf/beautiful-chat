@@ -38,7 +38,7 @@ import type {
   PaseoToolData,
   GitHubToolData,
 } from "../shared/contracts";
-import { revealPathRpc } from "../shared/file-rpc";
+import { openPathRpc, revealPathRpc } from "../shared/file-rpc";
 import { buildGitHubData } from "./github-request";
 import { useImageFile } from "./image-file";
 
@@ -766,6 +766,20 @@ export function LiveAssistantRenderer({
   useSelectionActions(tokens, preferences.selectionActions);
   usePointerGlow(preferences.pointerGlow);
 
+  // The host's own file links are out of the plugin's reach, so a path in a
+  // reply opens through the daemon instead: the working directory comes off
+  // the agent, and `file.open` hands the resolved path to the operating
+  // system. A path that does not resolve does nothing, exactly like the
+  // daemon's own reveal.
+  const openPath = useRpc(openPathRpc);
+  const assistantCwd = useAgent(agentId, (agent) => agent.cwd);
+  const openFile = useCallback(
+    (path: string) => {
+      void openPath({ cwd: assistantCwd ?? "", path }).catch(() => {});
+    },
+    [assistantCwd, openPath],
+  );
+
   // Replacing the reply costs the host's footer, which the stream layout hangs
   // off an `assistant_message` item that no longer exists. Rebuild it where the
   // host puts it: under the newest message, once, not under every reply.
@@ -782,7 +796,13 @@ export function LiveAssistantRenderer({
       {envelope ? (
         <SystemCard envelope={envelope} tokens={tokens} />
       ) : (
-        <MarkdownView text={item.data.text} tokens={tokens} variant={preferences.markdownVariant} />
+        <MarkdownView
+          text={item.data.text}
+          tokens={tokens}
+          variant={preferences.markdownVariant}
+          marks={preferences.markSyntax}
+          onOpenFile={openFile}
+        />
       )}
       {isTail && !envelope ? (
         <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} />

@@ -21,3 +21,23 @@ export const revealPathRpc = defineRpc({
     error: z.string().nullable(),
   }),
 });
+
+/**
+ * Opens a path with the platform's default handler.
+ *
+ * A reply that mentions a file the way the host's markdown would link it needs
+ * the same reach: the client cannot launch anything, so the daemon side
+ * resolves the path against the agent's working directory and hands the file
+ * to the operating system.
+ */
+export const openPathRpc = defineRpc({
+  name: "file.open",
+  input: z.object({
+    cwd: z.string(),
+    path: z.string(),
+  }),
+  output: z.object({
+    opened: z.string().nullable(),
+    error: z.string().nullable(),
+  }),
+});

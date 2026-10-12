@@ -1,4 +1,4 @@
-# Beautiful Chat
+﻿# Beautiful Chat
 
 A Paseo plugin that redraws the Oh My Pi (OMP) chat stream: tool calls, reasoning, prompts, approvals,
 and checklists. It replaces the host rendering of OMP timeline items with typed, syntax-aware cards
@@ -152,6 +152,7 @@ Devicon brand marks, and the file-manager link.
 | Frosted glass          | Blur card surfaces, or paint them solid.                           |
 | Enhanced prompt bubble | Off hands prompts back to Paseo, whose bubble shows pasted images. |
 | Assistant markdown     | Off hands replies back to Paseo's own markdown renderer.           |
+| Highlight marks        | Render ==text== in a reply as a marker highlight, with mark and bold colour presets. Off by default. |
 
 ---
 
@@ -185,6 +186,13 @@ asks the platform shell to show it:
 | Other    | `xdg-open <directory>` opens the containing directory. |
 
 A directory path opens that directory. A path the daemon cannot stat does nothing.
+
+A reply's own prose gets the same treatment for the paths it mentions: an absolute path, a home
+path, or a relative path ending in a file extension draws as a link, and pressing it calls a second
+RPC (`file.open`), which opens the file with the platform's default handler — an `.html` artifact
+lands in the browser, a `.md` file in its editor. A `:55` line selector is accepted and stripped
+when the daemon resolves. The path detection is deliberately conservative: half-width and full-width
+punctuation both end a candidate, and a relative token without an extension stays prose.
 
 ## Unmapped output
 

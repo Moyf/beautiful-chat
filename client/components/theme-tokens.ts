@@ -1,5 +1,11 @@
 import type { PluginTheme } from "@getpaseo/plugin";
-import { DEFAULT_PREFERENCES, type EnhancerPreferences, ACCENT_PRESETS } from "../preferences";
+import {
+  BOLD_COLOR_PRESETS,
+  DEFAULT_PREFERENCES,
+  MARK_COLOR_PRESETS,
+  type EnhancerPreferences,
+  ACCENT_PRESETS,
+} from "../preferences";
 
 export type PluginSurfaceColors = PluginTheme["colors"];
 
@@ -33,6 +39,11 @@ export interface ExtendedThemeTokens {
   fontMono: string;
   fontCode: string;
   fontUi: string;
+
+  /** The wash behind ==mark== highlights; derived from the chosen preset. */
+  markBackground: string;
+  /** Bold text in a reply, or null to inherit the surrounding colour. */
+  strongColor: string | null;
 
   // Surfaces
   surface0: string;
@@ -174,6 +185,8 @@ export function buildThemeTokens(
   const danger = colors.statusDanger;
   const tint = isDark ? 0.1 : 0.08;
   const edge = isDark ? 0.22 : 0.18;
+  const markBase = MARK_COLOR_PRESETS[preferences.markColor] ?? null;
+  const boldPreset = BOLD_COLOR_PRESETS[preferences.boldColor];
 
   return {
     isDark,
@@ -181,6 +194,14 @@ export function buildThemeTokens(
     fontCode: preferences.codeFont === "plain" ? fontMono : fontCode,
     fontUi: preferences.uiFont === "system" ? "System" : fontUi,
 
+    // The highlighter wash thins out on dark surfaces so the text keeps its
+    // contrast against the card. The built-in default is the marker yellow.
+    markBackground: markBase
+      ? withAlpha(markBase, isDark ? 0.3 : 0.42)
+      : isDark
+        ? "rgba(245, 208, 10, 0.28)"
+        : "rgba(245, 208, 10, 0.45)",
+    strongColor: boldPreset === "accent" ? accent : (boldPreset ?? null),
     surface0: colors.surface0,
     surface1: withAlpha(fg, isDark ? 0.03 : 0.025),
     surface2: withAlpha(fg, isDark ? 0.06 : 0.045),

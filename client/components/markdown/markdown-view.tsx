@@ -7,7 +7,7 @@ import { selectableSurface, unselectable } from "../selection";
 import { selectionSurface } from "../selection-actions";
 import { SyntaxHighlightBlock } from "../syntax-highlight";
 import { openLink } from "../open-link";
-import { parseMarkdown, type MdAlign, type MdBlock, type MdInline, type MdListItem } from "./parse";
+import { parseMarkdown, isFilePathToken, type MdAlign, type MdBlock, type MdInline, type MdListItem } from "./parse";
 
 /**
  * The assistant's own prose, drawn by the plugin instead of the host. Three
@@ -22,6 +22,18 @@ export interface MarkdownViewProps {
   text: string;
   tokens: ExtendedThemeTokens;
   variant: MarkdownVariant;
+  /**
+   * Renders ==text== as a marker highlight. Off keeps the equals signs as the
+   * author typed them, which is the right default while no instruction asks
+   * the model for the syntax.
+   */
+  marks?: boolean;
+  /**
+   * Opens a local path the reply mentions. The host's own file links are out
+   * of the plugin's reach, so the caller bridges the path to the daemon, which
+   * hands it to the operating system. Undefined leaves every path as text.
+   */
+  onOpenFile?: (path: string) => void;
 }
 
 type MdTableBlock = Extract<MdBlock, { kind: "table" }>;
@@ -185,6 +197,7 @@ interface MarkdownStyles {
   strong: TextStyle;
   emphasis: TextStyle;
   strike: TextStyle;
+  mark: TextStyle;
   codeSpan: TextStyle;
   link: TextStyle;
 }
@@ -193,14 +206,15 @@ interface RenderContext {
   styles: MarkdownStyles;
   tokens: ExtendedThemeTokens;
   metrics: VariantMetrics;
+  onOpenFile?: (path: string) => void;
 }
 
-export function MarkdownView({ text, tokens, variant }: MarkdownViewProps) {
-  const blocks = useMemo(() => parseMarkdown(text), [text]);
+export function MarkdownView({ text, tokens, variant, marks = true, onOpenFile }: MarkdownViewProps) {
+  const blocks = useMemo(() => parseMarkdown(text, { marks }), [text, marks]);
   const styles = useMemo(() => buildStyles(tokens, variant), [tokens, variant]);
   const context = useMemo<RenderContext>(
-    () => ({ styles, tokens, metrics: VARIANT_METRICS[variant] }),
-    [styles, tokens, variant],
+    () => ({ styles, tokens, metrics: VARIANT_METRICS[variant], onOpenFile }),
+    [styles, tokens, variant, onOpenFile],
   );
 
   return (
@@ -227,7 +241,7 @@ function renderBlock(
             {metrics.headingHash ? (
               <Text style={styles.headingHash}>{HASH_LABELS[block.level - 1] ?? "# "}</Text>
             ) : null}
-            {renderInline(block.spans, styles, key)}
+            {renderInline(block.spans, styles, key, context.onOpenFile)}
           </Text>
           {metrics.headingRule && block.level <= 2 ? <View style={styles.headingRule} /> : null}
         </View>
@@ -237,7 +251,7 @@ function renderBlock(
     case "paragraph":
       return (
         <Text key={key} selectable style={styles.paragraph}>
-          {renderInline(block.spans, styles, key)}
+          {renderInline(block.spans, styles, key, context.onOpenFile)}
         </Text>
       );
 
@@ -255,11 +269,11 @@ function renderBlock(
     case "quote":
       return (
         <View key={key} style={styles.quote}>
-          {block.paragraphs.map((spans, index) => (
-            <Text key={`${key}q${index}`} selectable style={styles.quoteText}>
-              {renderInline(spans, styles, `${key}q${index}`)}
-            </Text>
-          ))}
+      {block.paragraphs.map((spans, index) => (
+        <Text key={`${key}q${index}`} selectable style={styles.quoteText}>
+          {renderInline(spans, styles, `${key}q${index}`, context.onOpenFile)}
+        </Text>
+      ))}
         </View>
       );
 
@@ -306,7 +320,7 @@ function renderItem(
   // item's first character instead of under its marker.
   const body = (
     <Text selectable style={item.checked === true ? styles.itemTextDone : styles.itemText}>
-      {renderInline(item.spans, styles, key)}
+      {renderInline(item.spans, styles, key, context.onOpenFile)}
     </Text>
   );
 
@@ -377,7 +391,7 @@ function renderTable(block: MdTableBlock, key: string, context: RenderContext): 
                   { width: widths[column] ?? metrics.columnMin },
                 ]}
               >
-                {renderInline(cell, styles, cellKey)}
+                {renderInline(cell, styles, cellKey, context.onOpenFile)}
               </Text>
             );
           })}
@@ -396,7 +410,7 @@ function renderTable(block: MdTableBlock, key: string, context: RenderContext): 
                     { width: widths[column] ?? metrics.columnMin },
                   ]}
                 >
-                  {renderInline(cell, styles, cellKey)}
+                  {renderInline(cell, styles, cellKey, context.onOpenFile)}
                 </Text>
               );
             })}
@@ -411,34 +425,67 @@ function renderInline(
   spans: MdInline[],
   styles: MarkdownStyles,
   keyPrefix: string,
+  onOpenFile?: (path: string) => void,
 ): React.ReactNode[] {
   return spans.map((span, index) => {
     const key = `${keyPrefix}i${index}`;
     switch (span.kind) {
       case "text":
         return span.text;
-      case "codeSpan":
+      case "codeSpan": {
+        // The host draws an inline-code path as a link too, so a path the
+        // author wrapped in backticks keeps the same affordance here.
+        const codePath = onOpenFile ? isFilePathToken(span.text) : null;
+        if (codePath !== null) {
+          return (
+            <Text
+              key={key}
+              onPress={() => onOpenFile?.(codePath)}
+              style={[styles.codeSpan, styles.link]}
+            >
+              {span.text}
+            </Text>
+          );
+        }
         return (
           <Text key={key} selectable style={styles.codeSpan}>
             {span.text}
           </Text>
         );
+      }
+      case "filePath":
+        return (
+          <Text
+            key={key}
+            onPress={() => onOpenFile?.(span.path)}
+            accessibilityRole="link"
+            style={styles.link}
+          >
+            {span.path}
+          </Text>
+        );
       case "strong":
         return (
           <Text key={key} selectable style={styles.strong}>
-            {renderInline(span.spans, styles, key)}
+            {renderInline(span.spans, styles, key, onOpenFile)}
           </Text>
         );
       case "emphasis":
         return (
           <Text key={key} selectable style={styles.emphasis}>
-            {renderInline(span.spans, styles, key)}
+            {renderInline(span.spans, styles, key, onOpenFile)}
           </Text>
         );
       case "strike":
         return (
           <Text key={key} selectable style={styles.strike}>
-            {renderInline(span.spans, styles, key)}
+            {renderInline(span.spans, styles, key, onOpenFile)}
+          </Text>
+        );
+      case "mark":
+        return (
+          <Text key={key} selectable style={styles.mark}>
+            {renderInline(span.spans, styles, key, onOpenFile)}
           </Text>
         );
       case "link":
@@ -456,7 +503,7 @@ function renderInline(
             onPress={() => openLink(span.href)}
             style={styles.link}
           >
-            {renderInline(span.spans, styles, key)}
+            {renderInline(span.spans, styles, key, onOpenFile)}
           </Text>
         );
     }
@@ -496,6 +543,9 @@ function inlineWidth(spans: MdInline[], size: number, ratio: number): number {
         break;
       case "codeSpan":
         width += span.text.length * size * CHAR_RATIO_MONO + CODE_CHIP_PADDING * 2;
+        break;
+      case "filePath":
+        width += span.path.length * size * ratio;
         break;
       default:
         width += inlineWidth(span.spans, size, ratio);
@@ -714,7 +764,7 @@ function buildStyles(tokens: ExtendedThemeTokens, variant: MarkdownVariant): Mar
     cellRight: { textAlign: "right" },
     strong: {
       fontWeight: "700",
-      color: tokens.foreground,
+      color: tokens.strongColor ?? tokens.foreground,
     },
     emphasis: {
       fontStyle: "italic",
@@ -722,6 +772,13 @@ function buildStyles(tokens: ExtendedThemeTokens, variant: MarkdownVariant): Mar
     strike: {
       textDecorationLine: "line-through",
       color: tokens.foregroundMuted,
+    },
+    // The wash comes from the mark colour preference; a mark is an author's
+    // annotation rather than a state, so no theme token is spent on it.
+    mark: {
+      color: tokens.foreground,
+      backgroundColor: tokens.markBackground,
+      borderRadius: 3,
     },
     codeSpan: {
       fontFamily: tokens.fontMono,
