@@ -37,6 +37,13 @@ export interface EnhancerPreferences {
    */
   enhancedUserBubble: boolean;
   /**
+   * Folds a finished tool card back up on its own. A card the user opened or
+   * closed keeps its state, and a failed call always stays open.
+   */
+  autoCollapseTools: boolean;
+  /** Starts a thinking stream folded instead of following it live. */
+  collapseThinking: boolean;
+  /**
    * The Copy / Add to chat bar that follows a highlight. Web and desktop only:
    * iOS and Android route selection through the platform's own menu, which the
    * plugin cannot extend, so the toggle has no effect there.
@@ -63,6 +70,8 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   frostedGlass: true,
   pointerGlow: true,
   enhancedUserBubble: true,
+  autoCollapseTools: true,
+  collapseThinking: true,
   selectionActions: true,
   assistantMarkdown: true,
   markdownVariant: "document",
@@ -104,6 +113,14 @@ function loadPreferences(): EnhancerPreferences {
         typeof candidate.enhancedUserBubble === "boolean"
           ? candidate.enhancedUserBubble
           : DEFAULT_PREFERENCES.enhancedUserBubble,
+      autoCollapseTools:
+        typeof candidate.autoCollapseTools === "boolean"
+          ? candidate.autoCollapseTools
+          : DEFAULT_PREFERENCES.autoCollapseTools,
+      collapseThinking:
+        typeof candidate.collapseThinking === "boolean"
+          ? candidate.collapseThinking
+          : DEFAULT_PREFERENCES.collapseThinking,
       selectionActions:
         typeof candidate.selectionActions === "boolean"
           ? candidate.selectionActions
