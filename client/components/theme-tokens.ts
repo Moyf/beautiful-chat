@@ -188,15 +188,24 @@ export function buildThemeTokens(
 ): ExtendedThemeTokens {
   const isDark = isDarkSurface(colors.surface0);
   const fg = colors.foreground;
-  const accent = ACCENT_PRESETS[preferences.accent] ?? colors.accent;
+  const accent =
+    preferences.accent === "custom"
+      ? preferences.accentCustomColor
+      : (ACCENT_PRESETS[preferences.accent] ?? colors.accent);
   const success = isDark ? "#4cb782" : "#1f8a5b";
   const warning = isDark ? "#d9a53f" : "#a36a00";
   const danger = colors.statusDanger;
   const tint = isDark ? 0.1 : 0.08;
   const edge = isDark ? 0.22 : 0.18;
   const textScale = preferences.textScale;
-  const markBase = MARK_COLOR_PRESETS[preferences.markColor] ?? null;
-  const boldPreset = BOLD_COLOR_PRESETS[preferences.boldColor];
+  const markBase =
+    preferences.markColor === "custom"
+      ? preferences.markCustomColor
+      : (MARK_COLOR_PRESETS[preferences.markColor] ?? null);
+  const boldPreset =
+    preferences.boldColor === "custom"
+      ? preferences.boldCustomColor
+      : BOLD_COLOR_PRESETS[preferences.boldColor];
 
   return {
     isDark,

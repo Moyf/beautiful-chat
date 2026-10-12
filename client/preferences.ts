@@ -8,36 +8,42 @@ export const ACCENT_PRESETS = {
   rose: "#f43f5e",
 } as const;
 
-export type AccentPreset = keyof typeof ACCENT_PRESETS;
+/** `"custom"` follows `accentCustomColor`, which the picker edits. */
+export type AccentPreset = keyof typeof ACCENT_PRESETS | "custom";
 export type UiFontPreference = "inter" | "system";
 export type CodeFontPreference = "code" | "plain";
 export type MarkdownVariantPreference = "document" | "compact" | "terminal";
 
-/** `null` is the built-in highlighter yellow the mark style falls back to. */
+/**
+ * Highlighter pastels, the colours a real marker leaves on paper. `null` is
+ * the built-in wash the mark style falls back to; `"custom"` (in the type)
+ * follows `markCustomColor`.
+ */
 export const MARK_COLOR_PRESETS = {
   default: null,
-  yellow: "#f5d90a",
-  green: "#4ade80",
-  sky: "#38bdf8",
-  pink: "#f472b6",
-  orange: "#fb923c",
+  yellow: "#ffd43b",
+  green: "#8ce99a",
+  blue: "#74c0fc",
+  pink: "#fcc2d7",
+  orange: "#ffc078",
 } as const;
-export type MarkColorPreset = keyof typeof MARK_COLOR_PRESETS;
+export type MarkColorPreset = keyof typeof MARK_COLOR_PRESETS | "custom";
 
 /**
- * `null` keeps bold inheriting the text colour; `"accent"` follows the theme's
- * accent, which only buildThemeTokens can resolve.
+ * Text-weight colours for bold, picked from the Radix text steps so one hex
+ * holds its contrast on dark and light surfaces alike. `null` keeps bold
+ * inheriting the text colour; `"accent"` follows the theme's accent.
  */
 export const BOLD_COLOR_PRESETS = {
   inherit: null,
   accent: "accent",
-  red: "#ef4444",
-  orange: "#fb923c",
-  green: "#4ade80",
-  sky: "#38bdf8",
-  purple: "#a78bfa",
+  rose: "#e64980",
+  orange: "#f76707",
+  green: "#40c057",
+  blue: "#228be6",
+  violet: "#845ef7",
 } as const;
-export type BoldColorPreset = keyof typeof BOLD_COLOR_PRESETS;
+export type BoldColorPreset = keyof typeof BOLD_COLOR_PRESETS | "custom";
 
 /** Multiplier applied to every font size the plugin draws. */
 export const TEXT_SCALE_MIN = 0.85;
@@ -88,6 +94,11 @@ export interface EnhancerPreferences {
   markSyntax: boolean;
   markColor: MarkColorPreset;
   boldColor: BoldColorPreset;
+
+  /** The hex behind each `"custom"` choice, edited by the colour picker. */
+  accentCustomColor: string;
+  markCustomColor: string;
+  boldCustomColor: string;
 }
 
 const STORAGE_KEY = "paseo/beautiful-chat/preferences/v1";
@@ -108,6 +119,9 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   markSyntax: false,
   markColor: "default",
   boldColor: "inherit",
+  accentCustomColor: "#38bdf8",
+  markCustomColor: "#f5d90a",
+  boldCustomColor: "#e64980",
 };
 
 const listeners = new Set<() => void>();
@@ -118,15 +132,22 @@ function storage(): Storage | undefined {
 }
 
 function isAccentPreset(value: unknown): value is AccentPreset {
-  return typeof value === "string" && value in ACCENT_PRESETS;
+  return value === "custom" || (typeof value === "string" && value in ACCENT_PRESETS);
 }
 
 function isMarkColorPreset(value: unknown): value is MarkColorPreset {
-  return typeof value === "string" && value in MARK_COLOR_PRESETS;
+  return value === "custom" || (typeof value === "string" && value in MARK_COLOR_PRESETS);
 }
 
 function isBoldColorPreset(value: unknown): value is BoldColorPreset {
-  return typeof value === "string" && value in BOLD_COLOR_PRESETS;
+  return value === "custom" || (typeof value === "string" && value in BOLD_COLOR_PRESETS);
+}
+
+/** Keeps a custom hex well-formed; anything else falls back to the default. */
+function normalizeHex(value: unknown, fallback: string): string {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)
+    ? value.toLowerCase()
+    : fallback;
 }
 
 function loadPreferences(): EnhancerPreferences {
@@ -184,6 +205,18 @@ function loadPreferences(): EnhancerPreferences {
       boldColor: isBoldColorPreset(candidate.boldColor)
         ? candidate.boldColor
         : DEFAULT_PREFERENCES.boldColor,
+      accentCustomColor: normalizeHex(
+        candidate.accentCustomColor,
+        DEFAULT_PREFERENCES.accentCustomColor,
+      ),
+      markCustomColor: normalizeHex(
+        candidate.markCustomColor,
+        DEFAULT_PREFERENCES.markCustomColor,
+      ),
+      boldCustomColor: normalizeHex(
+        candidate.boldCustomColor,
+        DEFAULT_PREFERENCES.boldCustomColor,
+      ),
     };
   } catch {
     return { ...DEFAULT_PREFERENCES };
