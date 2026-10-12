@@ -5,11 +5,15 @@ import { hostFontEscape } from "./components/host-font-escape";
 import { radius, buildThemeTokens, type ExtendedThemeTokens } from "./components/theme-tokens";
 import {
   ACCENT_PRESETS,
+  BOLD_COLOR_PRESETS,
+  MARK_COLOR_PRESETS,
   resetEnhancerPreferences,
   updateEnhancerPreferences,
   useEnhancerPreferences,
   type AccentPreset,
+  type BoldColorPreset,
   type CodeFontPreference,
+  type MarkColorPreset,
   type UiFontPreference,
 } from "./preferences";
 
@@ -24,6 +28,36 @@ const ACCENT_OPTIONS: ReadonlyArray<{
   { id: "amber", label: "Amber", color: ACCENT_PRESETS.amber },
   { id: "rose", label: "Rose", color: ACCENT_PRESETS.rose },
 ];
+
+const MARK_COLOUR_OPTIONS: ReadonlyArray<{
+  value: MarkColorPreset;
+  label: string;
+  color: string | null;
+}> = [
+  { value: "default", label: "Default", color: null },
+  { value: "yellow", label: "Yellow", color: MARK_COLOR_PRESETS.yellow },
+  { value: "green", label: "Green", color: MARK_COLOR_PRESETS.green },
+  { value: "sky", label: "Sky", color: MARK_COLOR_PRESETS.sky },
+  { value: "pink", label: "Pink", color: MARK_COLOR_PRESETS.pink },
+  { value: "orange", label: "Orange", color: MARK_COLOR_PRESETS.orange },
+];
+
+/** The accent swatch resolves against the live theme, so it is built per render. */
+function boldColourOptions(accent: string): ReadonlyArray<{
+  value: BoldColorPreset;
+  label: string;
+  color: string | null;
+}> {
+  return [
+    { value: "inherit", label: "Inherit", color: null },
+    { value: "accent", label: "Accent", color: accent },
+    { value: "red", label: "Red", color: BOLD_COLOR_PRESETS.red },
+    { value: "orange", label: "Orange", color: BOLD_COLOR_PRESETS.orange },
+    { value: "green", label: "Green", color: BOLD_COLOR_PRESETS.green },
+    { value: "sky", label: "Sky", color: BOLD_COLOR_PRESETS.sky },
+    { value: "purple", label: "Purple", color: BOLD_COLOR_PRESETS.purple },
+  ];
+}
 
 const TRACK_WIDTH = 38;
 const TRACK_HEIGHT = 22;
@@ -207,6 +241,75 @@ function ChoiceRow<T extends string>({
   );
 }
 
+/** A choice row whose options carry a colour swatch, for picking a text colour. */
+function SwatchRow<T extends string>({
+  title,
+  description,
+  value,
+  options,
+  onChange,
+  tokens,
+}: {
+  title: string;
+  description: string;
+  value: T;
+  options: ReadonlyArray<{ value: T; label: string; color: string | null }>;
+  onChange(value: T): void;
+  tokens: ExtendedThemeTokens;
+}) {
+  return (
+    <View style={[styles.row, { borderTopColor: tokens.borderSubtle }]}>
+      <Text style={[styles.rowTitle, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>
+        {title}
+      </Text>
+      <Text
+        style={[
+          styles.rowDescription,
+          { color: tokens.foregroundMuted, fontFamily: tokens.fontUi },
+        ]}
+      >
+        {description}
+      </Text>
+      <View style={styles.options}>
+        {options.map((option) => {
+          const selected = option.value === value;
+          return (
+            <Pressable
+              key={option.value}
+              accessibilityRole="button"
+              accessibilityLabel={`${title}: ${option.label}`}
+              accessibilityState={{ selected }}
+              onPress={() => onChange(option.value)}
+              style={[
+                styles.option,
+                {
+                  backgroundColor: selected ? tokens.accentBg : tokens.surface2,
+                  borderColor: selected ? tokens.accent : tokens.borderSubtle,
+                },
+              ]}
+            >
+              <View
+                style={[styles.swatch, { backgroundColor: option.color ?? tokens.border }]}
+              />
+              <Text
+                style={[
+                  styles.optionLabel,
+                  {
+                    color: selected ? tokens.accent : tokens.foregroundMuted,
+                    fontFamily: tokens.fontUi,
+                  },
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 /** Settings content mounted by Paseo under the selected host's Plugin settings. */
 export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
   const preferences = useEnhancerPreferences();
@@ -340,6 +443,32 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
           description="Starts a thinking stream folded; open one to read the reasoning while it streams."
           value={preferences.collapseThinking}
           onChange={(collapseThinking) => updateEnhancerPreferences({ collapseThinking })}
+          tokens={tokens}
+        />
+
+        <ToggleRow
+          title="Highlight marks"
+          description="Renders ==text== in a reply as a marker highlight. Off keeps the equals signs as typed. The model only uses the syntax when its instructions ask for it, so this stays off until you add that."
+          value={preferences.markSyntax}
+          onChange={(markSyntax) => updateEnhancerPreferences({ markSyntax })}
+          tokens={tokens}
+        />
+
+        <SwatchRow<MarkColorPreset>
+          title="Mark colour"
+          description="The wash behind highlighted text."
+          value={preferences.markColor}
+          options={MARK_COLOUR_OPTIONS}
+          onChange={(markColor) => updateEnhancerPreferences({ markColor })}
+          tokens={tokens}
+        />
+
+        <SwatchRow<BoldColorPreset>
+          title="Bold colour"
+          description="The colour bold text takes in a reply. Inherit keeps the surrounding text colour."
+          value={preferences.boldColor}
+          options={boldColourOptions(theme.colors.accent)}
+          onChange={(boldColor) => updateEnhancerPreferences({ boldColor })}
           tokens={tokens}
         />
 

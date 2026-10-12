@@ -19,7 +19,10 @@ export type MdInline =
   | { kind: "strong"; spans: MdInline[] }
   | { kind: "emphasis"; spans: MdInline[] }
   | { kind: "strike"; spans: MdInline[] }
-  | { kind: "link"; href: string; spans: MdInline[] };
+  | { kind: "mark"; spans: MdInline[] }
+  | { kind: "link"; href: string; spans: MdInline[] }
+  /** A local path the reply mentions, which the client can offer to open. */
+  | { kind: "filePath"; path: string };
 
 /** One table cell, already reduced to inline runs. */
 export type MdCell = MdInline[];
@@ -69,13 +72,27 @@ const ESCAPABLE_RE = /[!-\/:-@\[-`{-~]/;
 // Sticky, so a candidate is tested in place instead of slicing the line.
 const URL_RE = /(?:https?:\/\/|www\.)[^\s<>()[\]]+/y;
 
+// A path candidate: a Windows drive, a home prefix, a rooted slash, or a
+// relative run of segments, followed by a body that excludes the characters
+// prose wraps paths in — half- and full-width both, so a CJK sentence stops
+// the token where it starts. Validation is `isFilePathToken`'s job; this only
+// carves the candidate out of the line.
+const PATH_TOKEN_RE =
+  /(?:[A-Za-z]:[\\/]|~\/|(?:[\w.@-]+\/)+|\/)[^\s<>()[\]{}"'`|*?,;，。；：！？（）【】]*/y;
+
 /** Emphasis inside emphasis is rare and cheap to bound; deeper text stays flat. */
 const MAX_INLINE_DEPTH = 4;
+
+// Fullwidth and CJK punctuation reads as a break even though the code points
+// sit inside the wide range `WORD_RE` calls word characters: a URL or a path
+// after "：" or "）" starts a new token, exactly as it would after ":" or ")".
+const WIDE_BREAK_RE = /[\u3000-\u303f\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65]/;
 
 /** Two spaces, or a trailing backslash, are the author asking for a new line. */
 const HARD_BREAK_RE = /(?: {2,}|\\)$/;
 
-export function parseMarkdown(text: string): MdBlock[] {
+export function parseMarkdown(text: string, options?: { marks?: boolean }): MdBlock[] {
+  const marks = options?.marks !== false;
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const blocks: MdBlock[] = [];
   let index = 0;
@@ -98,7 +115,7 @@ export function parseMarkdown(text: string): MdBlock[] {
       const hashes = (heading[1] ?? "#").length;
       const level = (hashes > 4 ? 4 : hashes) as MdHeadingLevel;
       const title = (heading[2] ?? "").replace(TRAILING_SPACE_RE, "");
-      blocks.push({ kind: "heading", level, spans: parseInline(title) });
+      blocks.push({ kind: "heading", level, spans: parseInline(title, 0, marks) });
       index++;
       continue;
     }
@@ -110,21 +127,21 @@ export function parseMarkdown(text: string): MdBlock[] {
     }
 
     if (QUOTE_RE.test(line)) {
-      index = readQuote(lines, index, blocks);
+      index = readQuote(lines, index, blocks, marks);
       continue;
     }
 
     if (BULLET_RE.test(line) || ORDERED_RE.test(line)) {
-      index = readList(lines, index, blocks);
+      index = readList(lines, index, blocks, marks);
       continue;
     }
 
     if (isTableStart(lines, index)) {
-      index = readTable(lines, index, blocks);
+      index = readTable(lines, index, blocks, marks);
       continue;
     }
 
-    index = readParagraph(lines, index, blocks);
+    index = readParagraph(lines, index, blocks, marks);
   }
 
   return blocks;
@@ -183,7 +200,12 @@ function readFence(lines: string[], start: number, match: RegExpExecArray, out: 
  * marker of its own — reads as the next paragraph instead, which is what an
  * assistant that forgot the marker actually meant.
  */
-function readQuote(lines: string[], start: number, out: MdBlock[]): number {
+function readQuote(
+  lines: string[],
+  start: number,
+  out: MdBlock[],
+  marks: boolean,
+): number {
   const collected: string[] = [];
   let index = start;
 
@@ -205,13 +227,13 @@ function readQuote(lines: string[], start: number, out: MdBlock[]): number {
   let run: string[] = [];
   for (const line of collected) {
     if (line.trim() === "") {
-      if (run.length > 0) paragraphs.push(parseInline(joinSoft(run)));
+      if (run.length > 0) paragraphs.push(parseInline(joinSoft(run), 0, marks));
       run = [];
       continue;
     }
     run.push(line);
   }
-  if (run.length > 0) paragraphs.push(parseInline(joinSoft(run)));
+  if (run.length > 0) paragraphs.push(parseInline(joinSoft(run), 0, marks));
 
   out.push({ kind: "quote", paragraphs });
   return index === start ? start + 1 : index;
@@ -231,7 +253,7 @@ interface RawItem {
  * those are three different things on screen even when no blank line separates
  * them.
  */
-function readList(lines: string[], start: number, out: MdBlock[]): number {
+function readList(lines: string[], start: number, out: MdBlock[], marks: boolean): number {
   const items: RawItem[] = [];
   // Each entry is the indent column of one open level, so nesting follows what
   // the author actually typed instead of assuming two spaces per level.
@@ -305,7 +327,7 @@ function readList(lines: string[], start: number, out: MdBlock[]): number {
   // stray bullet out of the card instead of drawing a marker beside nothing.
   const parsed: MdListItem[] = [];
   for (const item of items) {
-    const spans = parseInline(item.text.trim());
+    const spans = parseInline(item.text.trim(), 0, marks);
     if (spans.length === 0) continue;
     const entry: MdListItem = {
       spans,
@@ -366,7 +388,7 @@ function isTableStart(lines: string[], index: number): boolean {
   return parseDelimiter(delimiter) !== null;
 }
 
-function readTable(lines: string[], start: number, out: MdBlock[]): number {
+function readTable(lines: string[], start: number, out: MdBlock[], marks: boolean): number {
   let end = start;
   while (end < lines.length) {
     const line = lines[end] ?? "";
@@ -389,7 +411,7 @@ function readTable(lines: string[], start: number, out: MdBlock[]): number {
     const cells = splitCells(lines[index] ?? "");
     const row: MdCell[] = [];
     for (let column = 0; column < width; column++) {
-      row.push(parseInline((cells[column] ?? "").trim()));
+      row.push(parseInline((cells[column] ?? "").trim(), 0, marks));
     }
     // A row wider than its header keeps the overflow in the last column: a
     // half-written streaming row must not delete text it already carries.
@@ -405,7 +427,7 @@ function readTable(lines: string[], start: number, out: MdBlock[]): number {
 
   out.push({
     kind: "table",
-    header: headerCells.map((cell) => parseInline(cell.trim())),
+    header: headerCells.map((cell) => parseInline(cell.trim(), 0, marks)),
     rows,
     align,
   });
@@ -451,7 +473,7 @@ function splitCells(line: string): string[] {
   return cells;
 }
 
-function readParagraph(lines: string[], start: number, out: MdBlock[]): number {
+function readParagraph(lines: string[], start: number, out: MdBlock[], marks: boolean): number {
   const collected: string[] = [];
   let index = start;
 
@@ -464,7 +486,7 @@ function readParagraph(lines: string[], start: number, out: MdBlock[]): number {
   }
 
   if (collected.length === 0) return start + 1;
-  out.push({ kind: "paragraph", spans: parseInline(joinSoft(collected)) });
+  out.push({ kind: "paragraph", spans: parseInline(joinSoft(collected), 0, marks) });
   return index;
 }
 
@@ -493,7 +515,7 @@ function isWordChar(ch: string): boolean {
  * characters the author typed, so `2 * 3 * 4` and a stray `**` read as prose
  * rather than vanishing into an unfinished span.
  */
-function parseInline(src: string, depth = 0): MdInline[] {
+function parseInline(src: string, depth = 0, marks = true): MdInline[] {
   if (src === "") return [];
   if (depth >= MAX_INLINE_DEPTH) return [{ kind: "text", text: src }];
 
@@ -546,7 +568,7 @@ function parseInline(src: string, depth = 0): MdInline[] {
         flush();
         out.push({
           kind: "strong",
-          spans: [{ kind: "emphasis", spans: parseInline(src.slice(index + 3, close), depth + 2) }],
+          spans: [{ kind: "emphasis", spans: parseInline(src.slice(index + 3, close), depth + 2, marks) }],
         });
         index = close + 3;
         continue;
@@ -558,7 +580,7 @@ function parseInline(src: string, depth = 0): MdInline[] {
         flush();
         out.push({
           kind: ch === "*" ? "strong" : "strike",
-          spans: parseInline(src.slice(index + 2, close), depth + 1),
+          spans: parseInline(src.slice(index + 2, close), depth + 1, marks),
         });
         index = close + 2;
         continue;
@@ -569,8 +591,28 @@ function parseInline(src: string, depth = 0): MdInline[] {
       const close = findEmphasisClose(src, index, ch);
       if (close > index + 1) {
         flush();
-        out.push({ kind: "emphasis", spans: parseInline(src.slice(index + 1, close), depth + 1) });
+        out.push({ kind: "emphasis", spans: parseInline(src.slice(index + 1, close), depth + 1, marks) });
         index = close + 1;
+        continue;
+      }
+    }
+
+    // `==mark==`, the highlighter convention markdown-it-mark established.
+    // Both edges must touch content, so a comparison written in prose —
+    // "if a == b" — keeps its equals signs instead of highlighting " b".
+    if (marks && ch === "=" && src[index + 1] === "=") {
+      const close = src.indexOf("==", index + 2);
+      if (
+        close > index + 2 &&
+        (src[index + 2] ?? " ").trim() !== "" &&
+        (src[close - 1] ?? " ").trim() !== ""
+      ) {
+        flush();
+        out.push({
+          kind: "mark",
+          spans: parseInline(src.slice(index + 2, close), depth + 1, marks),
+        });
+        index = close + 2;
         continue;
       }
     }
@@ -587,7 +629,7 @@ function parseInline(src: string, depth = 0): MdInline[] {
           out.push({
             kind: "link",
             href,
-            spans: label === "" ? [{ kind: "text", text: href }] : parseInline(label, depth + 1),
+            spans: label === "" ? [{ kind: "text", text: href }] : parseInline(label, depth + 1, marks),
           });
           index = hrefEnd + 1;
           continue;
@@ -595,12 +637,16 @@ function parseInline(src: string, depth = 0): MdInline[] {
       }
     }
 
-    if ((ch === "h" || ch === "w") && !isWordChar(src[index - 1] ?? "")) {
+    if (
+      (ch === "h" || ch === "w") &&
+      (!isWordChar(src[index - 1] ?? "") || WIDE_BREAK_RE.test(src[index - 1] ?? ""))
+    ) {
       URL_RE.lastIndex = index;
       const match = URL_RE.exec(src);
       if (match !== null) {
-        // Sentence punctuation that trails a bare URL belongs to the prose.
-        const url = (match[0] ?? "").replace(/[.,;:!?'"]+$/, "");
+        // Sentence punctuation that trails a bare URL belongs to the prose,
+        // half- and full-width both.
+        const url = (match[0] ?? "").replace(/[.,;:!?'"]*[，。；：！？）】』」]+$/, "");
         if (url !== "") {
           flush();
           out.push({
@@ -611,6 +657,24 @@ function parseInline(src: string, depth = 0): MdInline[] {
           index += url.length;
           continue;
         }
+      }
+    }
+
+    // A local path only ever starts at a break: after a space, punctuation or
+    // the string's own edge. Mid-word slashes — "and/or" — never trigger.
+    if (
+      (ch === "/" || ch === "~" || WORD_RE.test(ch)) &&
+      (!isWordChar(src[index - 1] ?? "") || WIDE_BREAK_RE.test(src[index - 1] ?? ""))
+    ) {
+      PATH_TOKEN_RE.lastIndex = index;
+      const match = PATH_TOKEN_RE.exec(src);
+      const candidate = match === null ? "" : (match[0] ?? "");
+      const filePath = candidate === "" ? null : isFilePathToken(candidate);
+      if (filePath !== null) {
+        flush();
+        out.push({ kind: "filePath", path: filePath });
+        index += filePath.length;
+        continue;
       }
     }
 
@@ -676,11 +740,36 @@ function cleanHref(raw: string): string {
   return href;
 }
 
+/**
+ * Whether a token reads as a local path a daemon could resolve, and the
+ * cleaned path when it does.
+ *
+ * The bar is deliberately high: an absolute shape (drive, home, or a leading
+ * slash) is accepted on its own, but a relative token must also end in a file
+ * extension, so "and/or" and a date like "2024/01" stay prose. Trailing
+ * sentence punctuation is not part of the path; a `:55` line selector is,
+ * and the daemon strips it when it resolves.
+ */
+export function isFilePathToken(raw: string): string | null {
+  const token = raw.trim().replace(/[.,;:!?'"]+$/, "");
+  if (token.length < 3) return null;
+  if (token.includes("://")) return null;
+  if (/[<>()[\]{}"'`|*?,;，。；：！？（）【】\s]/.test(token)) return null;
+
+  const windows = /^[A-Za-z]:[\\/]/.test(token);
+  const rooted = token.startsWith("/") || token.startsWith("~/") || token.startsWith("~\\");
+  const rest = windows ? token.slice(2) : token;
+  if (!/[\\/]/.test(rest)) return null;
+  if (!windows && !rooted && !/\.[A-Za-z0-9]{1,8}$/.test(token)) return null;
+  return token;
+}
+
 /** The text a reader sees, for measuring and for copy targets. */
 export function inlineToText(spans: MdInline[]): string {
   let out = "";
   for (const span of spans) {
     if (span.kind === "text" || span.kind === "codeSpan") out += span.text;
+    else if (span.kind === "filePath") out += span.path;
     else out += inlineToText(span.spans);
   }
   return out;

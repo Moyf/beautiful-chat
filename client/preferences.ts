@@ -13,6 +13,32 @@ export type UiFontPreference = "inter" | "system";
 export type CodeFontPreference = "code" | "plain";
 export type MarkdownVariantPreference = "document" | "compact" | "terminal";
 
+/** `null` is the built-in highlighter yellow the mark style falls back to. */
+export const MARK_COLOR_PRESETS = {
+  default: null,
+  yellow: "#f5d90a",
+  green: "#4ade80",
+  sky: "#38bdf8",
+  pink: "#f472b6",
+  orange: "#fb923c",
+} as const;
+export type MarkColorPreset = keyof typeof MARK_COLOR_PRESETS;
+
+/**
+ * `null` keeps bold inheriting the text colour; `"accent"` follows the theme's
+ * accent, which only buildThemeTokens can resolve.
+ */
+export const BOLD_COLOR_PRESETS = {
+  inherit: null,
+  accent: "accent",
+  red: "#ef4444",
+  orange: "#fb923c",
+  green: "#4ade80",
+  sky: "#38bdf8",
+  purple: "#a78bfa",
+} as const;
+export type BoldColorPreset = keyof typeof BOLD_COLOR_PRESETS;
+
 /** Multiplier applied to every font size the plugin draws. */
 export const TEXT_SCALE_MIN = 0.85;
 export const TEXT_SCALE_MAX = 1.35;
@@ -58,6 +84,10 @@ export interface EnhancerPreferences {
   assistantMarkdown: boolean;
   /** Which look the markdown renderer uses. */
   markdownVariant: MarkdownVariantPreference;
+  /** Renders ==text== in a reply as a marker highlight. Off shows the syntax as typed. */
+  markSyntax: boolean;
+  markColor: MarkColorPreset;
+  boldColor: BoldColorPreset;
 }
 
 const STORAGE_KEY = "paseo/beautiful-chat/preferences/v1";
@@ -75,6 +105,9 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   selectionActions: true,
   assistantMarkdown: true,
   markdownVariant: "document",
+  markSyntax: false,
+  markColor: "default",
+  boldColor: "inherit",
 };
 
 const listeners = new Set<() => void>();
@@ -86,6 +119,14 @@ function storage(): Storage | undefined {
 
 function isAccentPreset(value: unknown): value is AccentPreset {
   return typeof value === "string" && value in ACCENT_PRESETS;
+}
+
+function isMarkColorPreset(value: unknown): value is MarkColorPreset {
+  return typeof value === "string" && value in MARK_COLOR_PRESETS;
+}
+
+function isBoldColorPreset(value: unknown): value is BoldColorPreset {
+  return typeof value === "string" && value in BOLD_COLOR_PRESETS;
 }
 
 function loadPreferences(): EnhancerPreferences {
@@ -133,6 +174,16 @@ function loadPreferences(): EnhancerPreferences {
         candidate.markdownVariant === "compact" || candidate.markdownVariant === "terminal"
           ? candidate.markdownVariant
           : DEFAULT_PREFERENCES.markdownVariant,
+      markSyntax:
+        typeof candidate.markSyntax === "boolean"
+          ? candidate.markSyntax
+          : DEFAULT_PREFERENCES.markSyntax,
+      markColor: isMarkColorPreset(candidate.markColor)
+        ? candidate.markColor
+        : DEFAULT_PREFERENCES.markColor,
+      boldColor: isBoldColorPreset(candidate.boldColor)
+        ? candidate.boldColor
+        : DEFAULT_PREFERENCES.boldColor,
     };
   } catch {
     return { ...DEFAULT_PREFERENCES };
