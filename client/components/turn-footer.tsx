@@ -24,6 +24,13 @@ interface AssistantFooterProps {
   text: string;
   at: Date;
   tokens: ExtendedThemeTokens;
+  /**
+   * The host draws its footer once per turn, under the newest reply, and this
+   * component matches that when set. Older replies get the copy control alone:
+   * a timestamp per reply is noise, but a reply without any copy affordance
+   * pushes the reader back to the newest one just to lift its text.
+   */
+  showTime?: boolean;
 }
 
 const COPIED_MS = 1600;
@@ -53,7 +60,7 @@ export function formatReplyTime(date: Date, now: Date = new Date()): string {
   return `${label} ${time}`;
 }
 
-export function AssistantFooter({ text, at, tokens }: AssistantFooterProps) {
+export function AssistantFooter({ text, at, tokens, showTime = true }: AssistantFooterProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
@@ -124,7 +131,7 @@ export function AssistantFooter({ text, at, tokens }: AssistantFooterProps) {
         />
         <Text style={styles.copyLabel}>{copied ? "Copied" : "Copy"}</Text>
       </Pressable>
-      <Text style={styles.time}>{time}</Text>
+      {showTime ? <Text style={styles.time}>{time}</Text> : null}
     </View>
   );
 }

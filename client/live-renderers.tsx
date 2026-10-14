@@ -820,8 +820,17 @@ export function LiveAssistantRenderer({
           onOpenFile={openFile}
         />
       )}
-      {isTail && !envelope ? (
-        <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} />
+      {/* The tail reply carries the host-shaped footer — copy plus time. Every
+          older reply keeps the copy control alone: the host drops its footer
+          the moment a newer reply exists, which left all of history with no
+          way to lift a reply's text. */}
+      {!envelope ? (
+        <AssistantFooter
+          text={item.data.text}
+          at={timestamp}
+          tokens={tokens}
+          showTime={isTail}
+        />
       ) : null}
       <TimelineTailHub
         agentId={agentId}
