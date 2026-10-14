@@ -100,7 +100,7 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   selectionActions: true,
   assistantMarkdown: true,
   markdownVariant: "document",
-  markSyntax: false,
+  markSyntax: true,
   markColor: "default",
   boldColor: "inherit",
   accentCustomColor: "#38bdf8",
