@@ -796,6 +796,68 @@ export function LiveAssistantRenderer({
     [assistantCwd, openPath],
   );
 
+  // Fork: the host daemon exposes a fork-context RPC that returns the
+  // chat-history attachment a new agent needs to continue this conversation.
+  // The SDK facade surfaces it only on hosts that ship it, so the affordance
+  // feature-detects: stock hosts keep the button hidden, patched hosts get the
+  // full fork. The new agent mirrors the source agent's provider, model, mode
+  // and thinking option, and lands in the same workspace.
+  const paseo = usePaseo();
+  const forkSource = useAgent(
+    agentId,
+    (agent) => ({
+      workspaceId: agent.workspaceId,
+      provider: agent.provider,
+      model: agent.model,
+      cwd: agent.cwd,
+      thinkingOptionId: agent.thinkingOptionId,
+      currentModeId: agent.currentModeId,
+    }),
+  );
+  const [forking, setForking] = useState(false);
+  const forkClient = paseo as typeof paseo & {
+    buildAgentForkContext?: (
+      agentId: string,
+      options?: { boundaryCursor?: unknown; boundaryMessageId?: string },
+    ) => Promise<{ attachment?: Record<string, unknown> | null }>;
+  };
+  const forkAvailable =
+    typeof forkClient.buildAgentForkContext === "function" && forkSource != null;
+  const handleFork = useCallback(() => {
+    const build = forkClient.buildAgentForkContext;
+    if (!build || forking || !forkSource) return;
+    setForking(true);
+    void (async () => {
+      try {
+        const payload = await build.call(paseo, agentId);
+        if (!payload.attachment) return;
+        const providerModel = [forkSource.provider, forkSource.model].filter(Boolean).join("/");
+        const createOptions = {
+          config: {
+            provider: providerModel,
+            cwd: forkSource.cwd,
+            ...(forkSource.currentModeId ? { modeId: forkSource.currentModeId } : {}),
+            ...(forkSource.thinkingOptionId
+              ? { thinkingOptionId: forkSource.thinkingOptionId }
+              : {}),
+          },
+          cwd: forkSource.cwd,
+          attachments: [payload.attachment],
+          ...(forkSource.workspaceId ? { workspaceId: forkSource.workspaceId } : {}),
+        };
+        await (
+          paseo.agents.create as unknown as (
+            options: typeof createOptions,
+          ) => Promise<unknown>
+        )(createOptions);
+      } catch (error) {
+        console.error("[beautiful-chat] reply fork failed", error);
+      } finally {
+        setForking(false);
+      }
+    })();
+  }, [agentId, forkClient, forkSource, forking, paseo]);
+
   // Replacing the reply costs the host's footer, which the stream layout hangs
   // off an `assistant_message` item that no longer exists. Rebuild it where the
   // host puts it: under the newest message, once, not under every reply.
@@ -820,7 +882,8 @@ export function LiveAssistantRenderer({
           onOpenFile={openFile}
         />
       )}
-      {/* The tail reply carries the host-shaped footer — copy plus time. Every
+      {/* The tail reply carries the host-shaped footer — copy plus time, and
+          the fork control where the host daemon surfaces its fork RPC. Every
           older reply keeps the copy control alone: the host drops its footer
           the moment a newer reply exists, which left all of history with no
           way to lift a reply's text. */}
@@ -830,6 +893,8 @@ export function LiveAssistantRenderer({
           at={timestamp}
           tokens={tokens}
           showTime={isTail}
+          onFork={forkAvailable && isTail ? handleFork : undefined}
+          forking={forking}
         />
       ) : null}
       <TimelineTailHub

@@ -31,6 +31,13 @@ interface AssistantFooterProps {
    * pushes the reader back to the newest one just to lift its text.
    */
   showTime?: boolean;
+  /**
+   * Forks the turn: a new agent seeded with the conversation up to now, built
+   * on the host daemon's own fork-context RPC. Present only on hosts whose
+   * client facade surfaces it, so stock installs keep the button hidden.
+   */
+  onFork?: () => void;
+  forking?: boolean;
 }
 
 const COPIED_MS = 1600;
@@ -60,8 +67,9 @@ export function formatReplyTime(date: Date, now: Date = new Date()): string {
   return `${label} ${time}`;
 }
 
-export function AssistantFooter({ text, at, tokens, showTime = true }: AssistantFooterProps) {
+export function AssistantFooter({ text, at, tokens, showTime = true, onFork, forking = false }: AssistantFooterProps) {
   const [copied, setCopied] = useState(false);
+  const [forked, setForked] = useState(false);
 
   const handleCopy = useCallback(() => {
     void copyText(text)
@@ -73,6 +81,13 @@ export function AssistantFooter({ text, at, tokens, showTime = true }: Assistant
         // Clipboard access can be denied; the label simply does not change.
       });
   }, [text]);
+
+  const handleFork = useCallback(() => {
+    if (!onFork || forking) return;
+    onFork();
+    setForked(true);
+    setTimeout(() => setForked(false), COPIED_MS);
+  }, [onFork, forking]);
 
   const styles = useMemo(
     () =>
@@ -118,11 +133,38 @@ export function AssistantFooter({ text, at, tokens, showTime = true }: Assistant
 
   return (
     <View style={styles.container}>
+      {onFork ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={forked ? "Reply forked" : "Fork reply"}
+          onPress={handleFork}
+          style={[styles.copyButton, { marginLeft: -6 }]}
+        >
+          <Glyph
+            name={forked ? "Check" : "GitFork"}
+            size={12}
+            color={
+              forked ? tokens.success : forking ? tokens.accent : tokens.foregroundMuted
+            }
+          />
+          <Text
+            style={[
+              styles.copyLabel,
+              {
+                color:
+                  forked ? tokens.success : forking ? tokens.accent : tokens.foregroundMuted,
+              },
+            ]}
+          >
+            {forked ? "Forked" : forking ? "Forking…" : "Fork"}
+          </Text>
+        </Pressable>
+      ) : null}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={copied ? "Reply copied" : "Copy reply"}
         onPress={handleCopy}
-        style={styles.copyButton}
+        style={[styles.copyButton, onFork ? { marginLeft: 0 } : null]}
       >
         <Glyph
           name={copied ? "Check" : "Copy"}
