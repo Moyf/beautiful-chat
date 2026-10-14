@@ -152,7 +152,7 @@ Devicon brand marks, and the file-manager link.
 | Frosted glass          | Blur card surfaces, or paint them solid.                           |
 | Enhanced prompt bubble | Off hands prompts back to Paseo, whose bubble shows pasted images. |
 | Assistant markdown     | Off hands replies back to Paseo's own markdown renderer.           |
-| Highlight marks        | Render ==text== in a reply as a marker highlight, with mark and bold colour presets plus a custom picker. Off by default. |
+| Highlight marks        | Render ==text== in a reply as a marker highlight, with mark and bold colour presets plus a custom picker. On by default. |
 
 ---
 

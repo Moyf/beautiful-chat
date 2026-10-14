@@ -514,7 +514,7 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
 
         <ToggleRow
           title="Highlight marks"
-          description="Renders ==text== in a reply as a marker highlight. Off keeps the equals signs as typed. The model only uses the syntax when its instructions ask for it, so this stays off until you add that."
+          description="Renders ==text== in a reply as a marker highlight. Off keeps the equals signs as typed. The model only uses the syntax when its instructions ask for it."
           value={preferences.markSyntax}
           onChange={(markSyntax) => updateEnhancerPreferences({ markSyntax })}
           tokens={tokens}
